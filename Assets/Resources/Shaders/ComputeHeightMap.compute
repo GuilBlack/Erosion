@@ -1,0 +1,181 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel FBMMain
+#pragma kernel RigedFBMMain
+#pragma kernel CombinedFBMMain
+#pragma kernel RemapMain
+
+struct FBMParameters
+{
+    int Octaves;
+    float Persistence;
+    float Lacunarity;
+    float Exponentiation;
+    float Amplitude;
+    float Frequency;
+    float Seed;
+    float Scale;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float> Result;
+StructuredBuffer<FBMParameters> FBMParams;
+RWStructuredBuffer<int> GlobalMinMaxInt;
+RWStructuredBuffer<float> GlobalMinMaxFloat;
+float MapSize;
+int FloatToIntScalar;
+bool IsRigedFBM;
+bool IsCombinedFBM;
+
+groupshared int LocalMin;
+groupshared int LocalMax;
+
+// perlin noise from iq
+// The MIT License
+// Copyright 2013 Inigo Quilez
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+// to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
+// and to permit persons to whom the Software is furnished to do so, subject to the following conditions: 
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// https://www.youtube.com/c/InigoQuilez
+// https://iquilezles.org/
+//
+// https://www.shadertoy.com/view/Xsl3Dl
+float3 hash(float3 p) // replace this by something better
+{
+    p = float3(dot(p, float3(328.28 + FBMParams[0].Seed, 249.87 + FBMParams[0].Seed, 2187.95 + FBMParams[0].Seed)),
+            dot(p, float3(192.69 + FBMParams[0].Seed, 348.94 + FBMParams[0].Seed, 1278.13 + FBMParams[0].Seed)),
+            dot(p, float3(610.37 + FBMParams[0].Seed, 102.38 + FBMParams[0].Seed, 2739.47 + FBMParams[0].Seed)));
+
+    return -1.0 + 2.0 * frac(sin(p) * 6969.6969);
+}
+
+float noise(in float3 p)
+{
+    float3 i = floor(p);
+    float3 f = frac(p);
+	
+    float3 u = f * f * (3.0 - 2.0 * f);
+
+    return lerp(lerp(lerp(dot(hash(i + float3(0.0, 0.0, 0.0)), f - float3(0.0, 0.0, 0.0)),
+                        dot(hash(i + float3(1.0, 0.0, 0.0)), f - float3(1.0, 0.0, 0.0)), u.x),
+                   lerp(dot(hash(i + float3(0.0, 1.0, 0.0)), f - float3(0.0, 1.0, 0.0)),
+                        dot(hash(i + float3(1.0, 1.0, 0.0)), f - float3(1.0, 1.0, 0.0)), u.x), u.y),
+              lerp(lerp(dot(hash(i + float3(0.0, 0.0, 1.0)), f - float3(0.0, 0.0, 1.0)),
+                        dot(hash(i + float3(1.0, 0.0, 1.0)), f - float3(1.0, 0.0, 1.0)), u.x),
+                   lerp(dot(hash(i + float3(0.0, 1.0, 1.0)), f - float3(0.0, 1.0, 1.0)),
+                        dot(hash(i + float3(1.0, 1.0, 1.0)), f - float3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+}
+// end of perlin noise
+
+float FBM(float3 p, int octaves, float persistence, float lacunarity, float exponentiation)
+{
+    float total = 0.0;
+    float normalization = 0.0;
+    float amplitude = FBMParams[0].Amplitude;
+    float frequency = FBMParams[0].Frequency;
+    
+    for (int i = 0; i < octaves; i++)
+    {
+        total += noise(p * frequency) * amplitude;
+        normalization += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    
+    total /= normalization;
+    total = total * 0.5 + 0.5;
+    return pow(abs(total), exponentiation);
+}
+
+float RigedFBM(float3 p, int octaves, float persistence, float lacunarity, float exponentiation)
+{
+    float total = 0.0;
+    float normalization = 0.0;
+    float amplitude = FBMParams[0].Amplitude;
+    float frequency = FBMParams[0].Frequency;
+    
+    for (int i = 0; i < octaves; i++)
+    {
+        total += (1.0 - abs(noise(p * frequency))) * amplitude;
+        normalization += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    
+    total /= normalization;
+    total = total * 0.5 + 0.5;
+    return pow(abs(total), exponentiation);
+}
+
+void GetMinMax(uint3 id)
+{
+    int value = int(Result[id.xy] * FloatToIntScalar);
+
+    // Initialization for the first thread in the group
+    if (id.x % 8 == 0 && id.y % 8 == 0)
+    {
+        LocalMin = value;
+        LocalMax = value;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Update local min/max
+    InterlockedMin(LocalMin, value);
+    InterlockedMax(LocalMax, value);
+    GroupMemoryBarrierWithGroupSync();
+
+    // Update global min/max for the first thread in the group
+    if (id.x % 8 == 0 && id.y % 8 == 0)
+    {
+        InterlockedMin(GlobalMinMaxInt[0], LocalMin);
+        InterlockedMax(GlobalMinMaxInt[1], LocalMax);
+    }
+}
+
+[numthreads(16, 16, 1)]
+void FBMMain (uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = (id / MapSize) * FBMParams[0].Scale;
+    Result[id.xy] = FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation);
+    GetMinMax(id);
+}
+
+[numthreads(16, 16, 1)]
+void RigedFBMMain(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = (id / MapSize) * FBMParams[0].Scale;
+    Result[id.xy] = RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation);
+    GetMinMax(id);
+}
+
+[numthreads(16, 16, 1)]
+void CombinedFBMMain(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = (id / MapSize) * FBMParams[0].Scale;
+    Result[id.xy] = (FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation) +
+        RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation)) / 2.0;
+    GetMinMax(id);
+}
+
+float inverseLerp(float v, float minValue, float maxValue)
+{
+    return (v - minValue) / (maxValue - minValue);
+}
+
+float remap(float v, float inMin, float inMax, float outMin, float outMax)
+{
+    float t = inverseLerp(v, inMin, inMax);
+    return lerp(outMin, outMax, t);
+}
+
+[numthreads(16, 16, 1)]
+void RemapMain(uint3 id : SV_DispatchThreadID)
+{
+    float value = Result[id.xy];
+    float normalizedValue = remap(value, GlobalMinMaxFloat[0], GlobalMinMaxFloat[1], 0.0, 1.0);
+    Result[id.xy] = normalizedValue;
+}
