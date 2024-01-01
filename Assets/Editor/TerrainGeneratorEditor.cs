@@ -30,11 +30,6 @@ public class TerrainGeneratorEditor : Editor
             heightmapGenerator.LoadHeightsToBuffers();
         }
 
-        if (GUILayout.Button("ErodeTerrain"))
-        {
-            heightmapGenerator.ErodeTerrain();
-        }
-
         if (GUILayout.Button("SetTerrainHeightmap"))
         {
             heightmapGenerator.SetTerrainHeightmap();
