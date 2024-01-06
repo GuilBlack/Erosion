@@ -1,0 +1,219 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel ErosionMain
+
+struct CellData
+{
+    float Height;
+    float WaterHeight;
+    float Sediment;
+    float Hardness;
+    float4 WaterOutflowFlux;
+    float2 Velocity;
+};
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWStructuredBuffer<CellData> Data;
+RWStructuredBuffer<CellData> UpdatedData;
+
+float MapSize;
+float RainRate;
+float DeltaTime;
+float Gravity;
+float Kr; // some constant that scales the rain rate
+float Kc; // sediment capacity scale factor
+float KdMax;
+float EvaporationRate;
+float CrossArea;
+float SoilSuspendedRate;
+float SedimentDepositionRate;
+float SedimentSofteningRate;
+
+float LMax(float waterDepth)
+{
+    if (waterDepth <= 0)
+        return 0;
+    
+    if (waterDepth >= KdMax)
+        return 1;
+    
+    return 1 - (KdMax - waterDepth) / KdMax;
+}
+
+[numthreads(16,16,1)]
+void ErosionMain(uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+    int index = id.y * MapSize + id.x;
+    
+    CellData cell = Data[index];
+    UpdatedData[index] = cell;
+    float virtualPipeLength = 1.0;
+    
+    float d1 = cell.WaterHeight + DeltaTime * RainRate * Kr;
+    
+    float leftFlux = 0.0;
+    float rightFlux = 0.0;
+    float topFlux = 0.0;
+    float bottomFlux = 0.0;
+    
+    if (id.x > 0)
+    {
+        CellData leftCell = Data[index - 1];
+        float deltaHLeft = cell.Height + d1 - (leftCell.Height + d1);
+        leftFlux = max(0, cell.WaterOutflowFlux.x + DeltaTime * CrossArea * Gravity * deltaHLeft / virtualPipeLength);
+    }
+    else
+        leftFlux = 0.0;
+    
+    if (id.x < (uint)MapSize - 1)
+    {
+        CellData rightCell = Data[index + 1];
+        float deltaHRight = cell.Height + d1 - (rightCell.Height + d1);
+        rightFlux = max(0, cell.WaterOutflowFlux.y + DeltaTime * CrossArea * Gravity * deltaHRight / virtualPipeLength);
+    }
+    else
+        rightFlux = 0.0;
+    
+    if (id.y > 0)
+    {
+        CellData topCell = Data[index - MapSize];
+        float deltaHTop = cell.Height + d1 - (topCell.Height + d1);
+        topFlux = max(0, cell.WaterOutflowFlux.z + DeltaTime * CrossArea * Gravity * deltaHTop / virtualPipeLength);
+    }
+    else
+        topFlux = 0.0;
+    
+    if (id.y < (uint)MapSize - 1)
+    {
+        CellData bottomCell = Data[index + MapSize];
+        float deltaHBottom = cell.Height + d1 - (bottomCell.Height + d1);
+        bottomFlux = max(0, cell.WaterOutflowFlux.w + DeltaTime * CrossArea * Gravity * deltaHBottom / virtualPipeLength);
+    }
+    else
+        bottomFlux = 0.0;
+
+    float totalFlux = leftFlux + rightFlux + topFlux + bottomFlux;
+    float scaleDownFactor = max(1, d1 * virtualPipeLength * virtualPipeLength / (totalFlux * DeltaTime));
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    cell.WaterOutflowFlux = float4(leftFlux, rightFlux, topFlux, bottomFlux) * scaleDownFactor;
+    
+    float inflow = 0.0;
+    if (id.x > 0)
+        inflow += Data[index - 1].WaterOutflowFlux.y; // Inflow from left
+    if (id.x < (uint) MapSize - 1)
+        inflow += Data[index + 1].WaterOutflowFlux.x; // Inflow from right
+    if (id.y > 0)
+        inflow += Data[index - MapSize].WaterOutflowFlux.w; // Inflow from top
+    if (id.y < (uint) MapSize - 1)
+        inflow += Data[index + MapSize].WaterOutflowFlux.z; // Inflow from bottom
+    
+    float outflow = cell.WaterOutflowFlux.x + cell.WaterOutflowFlux.y + cell.WaterOutflowFlux.z + cell.WaterOutflowFlux.w;
+    
+    float deltaWater = max(0,(inflow - outflow) * DeltaTime);
+    
+    float d2 = d1 + (deltaWater / (virtualPipeLength * virtualPipeLength));
+    
+    // Calculate velocity field
+    float deltaX = 0.0;
+    float deltaY = 0.0;
+
+    if (id.x > 0)
+        deltaX += Data[index - 1].WaterOutflowFlux.y; // From left neighbor
+    deltaX -= cell.WaterOutflowFlux.x; // From current cell to left
+    deltaX += cell.WaterOutflowFlux.y; // From current cell to right
+    if (id.x < (uint) MapSize - 1)
+        deltaX -= Data[index + 1].WaterOutflowFlux.x; // From right neighbor
+    
+    if (id.y > 0)
+        deltaY += Data[index - MapSize].WaterOutflowFlux.w; // From top neighbor
+    deltaY -= cell.WaterOutflowFlux.z; // From current cell to top
+    deltaY += cell.WaterOutflowFlux.w; // From current cell to bottom
+    if (id.y < (uint) MapSize - 1)
+        deltaY -= Data[index + MapSize].WaterOutflowFlux.z; // From bottom neighbor
+    
+    // The final velocity vector
+    cell.Velocity.x = deltaX * 0.5;
+    cell.Velocity.y = deltaY * 0.5;
+    
+    // Approximate the normal vector of the terrain
+    float3 normal = float3(0, 1, 0); // Up vector as default
+    if (id.x > 0 && id.x < (uint) MapSize - 1 && id.y > 0 && id.y < (uint) MapSize - 1)
+    {
+        float leftHeight = Data[index - 1].Height;
+        float rightHeight = Data[index + 1].Height;
+        float topHeight = Data[index - MapSize].Height;
+        float bottomHeight = Data[index + MapSize].Height;
+        normal = normalize(float3(leftHeight - rightHeight, 2.0, topHeight - bottomHeight));
+    }
+    
+    // Compute the 3D water flow vector
+    float3 waterFlowVector = float3(cell.Velocity.x, 0, cell.Velocity.y);
+    
+    float sedimentCapacity = Kc * dot(-normal, waterFlowVector) * length(waterFlowVector) * LMax(d1);
+    
+    float s1 = cell.Sediment;
+    float d3 = d2;
+    
+    // Get the heights of neighboring cells
+    float leftHeight = id.x > 0 ? Data[index - 1].Height : cell.Height;
+    float rightHeight = id.x < (uint) MapSize - 1 ? Data[index + 1].Height : cell.Height;
+    float topHeight = id.y > 0 ? Data[index - MapSize].Height : cell.Height;
+    float bottomHeight = id.y < (uint) MapSize - 1 ? Data[index + MapSize].Height : cell.Height;
+
+    // Find the maximum height among neighbors
+    float maxNeighborHeight = max(max(leftHeight, rightHeight), max(topHeight, bottomHeight));
+    
+    if (cell.Sediment < sedimentCapacity)
+    {
+        float soilDissolved = DeltaTime * SoilSuspendedRate * (sedimentCapacity - cell.Sediment);
+        soilDissolved = min(soilDissolved, cell.WaterHeight); // Prevent over-erosion
+        cell.Height -= soilDissolved;
+        s1 += soilDissolved;
+        d3 += soilDissolved;
+    }
+    else
+    {
+        float sedimentDeposited = DeltaTime * SedimentDepositionRate * (cell.Sediment - sedimentCapacity);
+        sedimentDeposited = min(sedimentDeposited, cell.WaterHeight); // Prevent excessive deposition
+        cell.Height += sedimentDeposited;
+        min(cell.Height, maxNeighborHeight);
+        s1 -= sedimentDeposited;
+        d3 -= sedimentDeposited;
+    }
+    
+    float hardnessReduction = DeltaTime * SedimentSofteningRate * (cell.Sediment - sedimentCapacity);
+    cell.Hardness = max(0.05, cell.Hardness - hardnessReduction);
+    
+    Data[index].Sediment = s1;
+    DeviceMemoryBarrierWithGroupSync();
+    // Sediment transport
+    float2 newPosition = float2(id.x - cell.Velocity.x * DeltaTime, id.y - cell.Velocity.y * DeltaTime);
+    newPosition = clamp(newPosition, float2(0, 0), float2(MapSize - 1, MapSize - 1));
+    
+    // Calculate indices for interpolation
+    int2 bottomLeft = int2(floor(newPosition.x), floor(newPosition.y));
+    int2 topRight = int2(ceil(newPosition.x), ceil(newPosition.y));
+    int2 topLeft = int2(bottomLeft.x, topRight.y);
+    int2 bottomRight = int2(topRight.x, bottomLeft.y);
+    
+    // Calculate interpolation weights
+    float2 weight = frac(newPosition);
+    
+    float sedimentBottomLeft = Data[bottomLeft.y * MapSize + bottomLeft.x].Sediment;
+    float sedimentBottomRight = Data[bottomRight.y * MapSize + bottomRight.x].Sediment;
+    float sedimentTopLeft = Data[topLeft.y * MapSize + topLeft.x].Sediment;
+    float sedimentTopRight = Data[topRight.y * MapSize + topRight.x].Sediment;
+    
+    float interpolatedSediment = lerp(
+        lerp(sedimentBottomLeft, sedimentBottomRight, weight.x),
+        lerp(sedimentTopLeft, sedimentTopRight, weight.x),
+        weight.y
+    );
+    
+    cell.WaterHeight = d3 * (1 - EvaporationRate * DeltaTime);
+    
+    UpdatedData[index] = cell;
+}

@@ -25,9 +25,14 @@ public class TerrainGeneratorEditor : Editor
             heightmapGenerator.SaveHeightmapToAssets();
         }
 
-        if (GUILayout.Button("LoadHeightsToBuffers"))
+        if (GUILayout.Button("InitBufferHeights"))
         {
-            heightmapGenerator.LoadHeightsToBuffers();
+            heightmapGenerator.InitBufferHeights();
+        }
+
+        if (GUILayout.Button("Erode"))
+        {
+            heightmapGenerator.Erode();
         }
 
         if (GUILayout.Button("SetTerrainHeightmap"))
