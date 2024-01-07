@@ -205,11 +205,14 @@ void SedimentTransportationAndEvaporation(uint3 id : SV_DispatchThreadID)
     float bottomLeftIndex = floorPos.y * MapSize + floorPos.x;
     float bottomRightIndex = floorPos.y * MapSize + ceilPos.x;
     
+    float dx = pos.x - floorPos.x;
+    float dy = pos.y - floorPos.y;
+    
+    float interpolateXBottom = Data[bottomLeftIndex].Sediment * (1 - dx) + Data[bottomRightIndex].Sediment * dx;
+    float interpolateXTop = Data[topLeftIndex].Sediment * (1 - dx) + Data[topRightIndex].Sediment * dx;
+    
     // calculate interpolated sediment
-    float interpolatedSediment = Data[topLeftIndex].Sediment * (ceilPos.x - pos.x) * (ceilPos.y - pos.y) +
-        Data[topRightIndex].Sediment * (pos.x - floorPos.x) * (ceilPos.y - pos.y) +
-        Data[bottomLeftIndex].Sediment * (ceilPos.x - pos.x) * (pos.y - floorPos.y) +
-        Data[bottomRightIndex].Sediment * (pos.x - floorPos.x) * (pos.y - floorPos.y);
+    float interpolatedSediment = interpolateXBottom * (1 - dy) + interpolateXTop * dy;
     
     currentCell.Sediment = interpolatedSediment;
     
