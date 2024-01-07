@@ -157,7 +157,7 @@ void ErosionComputation(uint3 id : SV_DispatchThreadID)
     float limit = clamp(1 - (MaxErosionDepth - currentCell.WaterHeight) / MaxErosionDepth, 0.0f, 1.0f);
     
     // compute water sediment transport capacity
-    float sedimentTransportCapacity = SedimentCapacity * tiltAngle * length(currentCell.Velocity) * limit;
+    float sedimentTransportCapacity = SedimentCapacity * min(tiltAngle, 0.05) * length(currentCell.Velocity) * limit;
     float tempSediment = currentCell.Sediment;
     if (sedimentTransportCapacity > currentCell.Sediment)
     {
