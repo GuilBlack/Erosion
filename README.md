@@ -4,7 +4,7 @@ This is a prototype Unity implementation of a grid-based hydraulic erosion simul
 
 ## Features
 
-- Create initial terrain with Perlin noise on a compute shader.
+- Create initial terrain with Fractal Browian Motion on a compute shader.
 - Simulate hydraulic erosion on a compute shader separated in multiple kernels following the paper by Jako and Szirmay-Kalos.
 - Runs in the editor as a tool to create terrain.
 
