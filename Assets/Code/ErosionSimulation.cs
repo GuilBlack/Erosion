@@ -26,7 +26,7 @@ public class ErosionSimulation : MonoBehaviour
     {
         if (_isSimulating == false)
             return;
-
+        ApplySimulationParameters();
         SimulateErosion();
     }
 
@@ -84,16 +84,7 @@ public class ErosionSimulation : MonoBehaviour
         }
 
         // set properties that don't change per kernel
-        erosionComputeShader.SetFloat("MapSizeP", heightMap.width);
-        erosionComputeShader.SetFloat("CellSizeM", heightMap.width / simulationParams.MapSizeM);
-
-        erosionComputeShader.SetFloat("TimeStep", simulationParams.TimeStep);
-
-        erosionComputeShader.SetFloat("RainRate", simulationParams.RainRate);
-        erosionComputeShader.SetFloat("EvaporationRate", simulationParams.EvaporationRate);
-        erosionComputeShader.SetFloat("Gravity", simulationParams.Gravity);
-        erosionComputeShader.SetFloat("PipeCrossSectionArea", simulationParams.PipeCrossArea);
-        erosionComputeShader.SetFloat("PipeLength", simulationParams.PipeLength);
+        ApplySimulationParameters();
 
         // Set buffer/texture references for all kernels
         for (int i = 0; i < _kernelHandles.Length; i++)
@@ -121,6 +112,20 @@ public class ErosionSimulation : MonoBehaviour
             _debugFluxTexture.Release();
             _debugFluxTexture = null;
         }
+    }
+
+    public void ApplySimulationParameters()
+    {
+        erosionComputeShader.SetFloat("MapSizeP", heightMap.width);
+        erosionComputeShader.SetFloat("CellSizeM", heightMap.width / simulationParams.MapSizeM);
+
+        erosionComputeShader.SetFloat("TimeStep", simulationParams.TimeStep);
+
+        erosionComputeShader.SetFloat("RainRate", simulationParams.RainRate);
+        erosionComputeShader.SetFloat("EvaporationRate", simulationParams.EvaporationRate);
+        erosionComputeShader.SetFloat("Gravity", simulationParams.Gravity);
+        erosionComputeShader.SetFloat("PipeCrossSectionArea", simulationParams.PipeCrossArea);
+        erosionComputeShader.SetFloat("PipeLength", simulationParams.PipeLength);
     }
 
     private void SimulateErosion()

@@ -2,6 +2,7 @@
 
 namespace Assets
 {
+    // param range taken from: https://old.cescg.org/CESCG-2011/papers/TUBudapest-Jako-Balazs.pdf
     [CreateAssetMenu(fileName = "ErosionParamsSO", menuName = "ScriptableObjects/ErosionParamsSO", order = 1)]
     public class ErosionParamsSO : ScriptableObject
     {
@@ -9,11 +10,13 @@ namespace Assets
         public float TimeScale = 1f;
         [Range(0, 0.05f)]
         public float TimeStep = 0.02f;
+        [Range(0.1f, 20f)]
         public float Gravity = 9.81f;
+        [Range(0, 0.05f)]
         public float RainRate = 0.02f;
         public float MapSizeM = 1024f;
 
-        [Range(0, 1)]
+        [Range(0, 0.05f)]
         public float EvaporationRate = 0.015f;
         public float SoilSuspensionRate = 0.01f;
         public float SedimentDepositionRate = 0.3f;
@@ -23,6 +26,7 @@ namespace Assets
         public float MinHardness = 0.1f;
 
         public float PipeLength = 1f;
+        [Range(0.1f, 30f)]
         public float PipeCrossArea = 1f;
     }
 }

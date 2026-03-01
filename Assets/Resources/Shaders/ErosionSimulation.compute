@@ -109,7 +109,7 @@ void WaterInFlow(uint3 id : SV_DispatchThreadID)
 
     // equation (7)
     float lastWaterLevel = TerrainAndWaterHeights[cellId].y;
-    float currentWaterLevel = lastWaterLevel + (deltaVolume / CellSizeM * CellSizeM);
+    float currentWaterLevel = max(0.0, lastWaterLevel + (deltaVolume / (CellSizeM * CellSizeM)));
     float avgWaterLevel = (currentWaterLevel + lastWaterLevel) * 0.5;
     TerrainAndWaterHeights[cellId] = float2(TerrainAndWaterHeights[cellId].x, currentWaterLevel);
 
@@ -119,10 +119,16 @@ void WaterInFlow(uint3 id : SV_DispatchThreadID)
     deltaFlux.y = (inFlux.w - outFlux.w + outFlux.z - inFlux.z) * 0.5;
 
     // solve equation (8 & 9)
-    float2 velocity;
-    velocity.x = deltaFlux.x / (abs(avgWaterLevel) * CellSizeM);
-    velocity.y = deltaFlux.y / (abs(avgWaterLevel) * CellSizeM);
-    GetCellData(cellId).Velocity = velocity;
+    //float2 velocity;
+    //velocity.x = deltaFlux.x / (avgWaterLevel * CellSizeM);
+    //velocity.y = deltaFlux.y / (avgWaterLevel * CellSizeM);
+    //GetCellData(cellId).Velocity = velocity;
+
+    // from this paper: https://old.cescg.org/CESCG-2011/papers/TUBudapest-Jako-Balazs.pdf
+    // solving the equation 8 & 9 doesn't seem necessary and we take deltaFlux 
+    // as the velocity directly. I guess now we don't have any worries about the case when 
+    // avgWaterLevel is close to 0 and cause the velocity to be extremely high.
+    GetCellData(cellId).Velocity = deltaFlux;
 }
 
 [numthreads(8,8,1)]
