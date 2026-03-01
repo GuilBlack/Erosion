@@ -24,6 +24,7 @@ RWTexture2D<float> Result;
 StructuredBuffer<FBMParameters> FBMParams;
 RWStructuredBuffer<int> GlobalMinMax;
 float MapSize;
+float HeightScale;
 int FloatToIntScalar; // because we are still using cs_5_0...
 bool IsRigedFBM;
 bool IsCombinedFBM;
@@ -138,5 +139,5 @@ void RemapMain(uint3 id : SV_DispatchThreadID)
     float value = Result[id.xy];
     float2 globalMinMaxf = float2((float)GlobalMinMax[0], (float)GlobalMinMax[1]) / FloatToIntScalar;
     float normalizedValue = remap(value, globalMinMaxf[0], globalMinMaxf[1], 0.0, 1.0);
-    Result[id.xy] = normalizedValue;
+    Result[id.xy] = normalizedValue * HeightScale;
 }

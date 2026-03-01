@@ -20,6 +20,7 @@ public class TerrainHeightmapGenerator : MonoBehaviour
     [SerializeField] private RenderTexture  _heightmapTexture;
     [SerializeField] private FBMParamsSO    _heightmapGenerationParams;
     [SerializeField] private bool           _blurResult;
+    [SerializeField] private float          _heightScale = 1f;
 
     [ReadOnly] private RenderTexture _heightmapTemp;
 
@@ -79,6 +80,7 @@ public class TerrainHeightmapGenerator : MonoBehaviour
         _heightmapCompute.SetBuffer(kernelHandle, "FBMParams", cbFBMParams);
         _heightmapCompute.SetBuffer(kernelHandle, "GlobalMinMax", cbMinMaxInt);
         _heightmapCompute.SetTexture(kernelHandle, "Result", _heightmapTemp);
+        _heightmapCompute.SetFloat("HeightScale", _heightScale);
         _heightmapCompute.Dispatch(kernelHandle, mapSize / 8, mapSize / 8, 1);
 
         int[] minMaxInt = new int[2];
@@ -107,10 +109,17 @@ public class TerrainHeightmapGenerator : MonoBehaviour
     private int GetKernelHandle()
     {
         if (_heightmapGenerationParams.IsCombinedFBM)
+        {
+            Debug.Log("Using Combined FBM kernel.");
             return _heightmapCompute.FindKernel("CombinedFBMMain");
+        }
 
         if (_heightmapGenerationParams.IsRidgedFBM)
+        {
+            Debug.Log("Using Ridged FBM kernel.");
             return _heightmapCompute.FindKernel("RigedFBMMain");
+        }
+        Debug.Log("Using standard FBM kernel.");
         return _heightmapCompute.FindKernel("FBMMain");
     }
 }

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3829899031d7d7429776388f06c344b, type: 3}
+  m_Name: ErosionParamsSO
+  m_EditorClassIdentifier: Assembly-CSharp::Assets.ErosionParamsSO
+  TimeScale: 1
+  TimeStep: 0.02
+  Gravity: 9.81
+  RainRate: 0.012
+  HeightScale: 300
+  MapSize: 1024
+  EvaporationRate: 0.15
+  SoilSuspensionRate: 1
+  SedimentDepositionRate: 0.3
+  SedimentSofteningRate: 3
+  SedimentCapacity: 0.1
+  MaxErosionDepth: 1
+  MinHardness: 0.1
+  PipeLength: 1
+  PipeCrossArea: 1

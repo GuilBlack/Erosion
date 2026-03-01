@@ -7,9 +7,12 @@ namespace Assets
     {
         [Range(0, 100)]
         public float TimeScale = 1f;
+        [Range(0, 0.05f)]
+        public float TimeStep = 0.02f;
         public float Gravity = 9.81f;
         public float RainRate = 0.02f;
         public float HeightScale = 500f;
+        public float MapSize = 1024f;
 
         [Range(0, 1)]
         public float EvaporationRate = 0.015f;
@@ -21,7 +24,6 @@ namespace Assets
         public float MinHardness = 0.1f;
 
         public float PipeLength = 1f;
-        public float PipeCrossArea = 4f;
-        public Vector2 CellSize = new Vector2(1f, 1f);
+        public float PipeCrossArea = 1f;
     }
 }

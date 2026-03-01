@@ -120,20 +120,6 @@
         {
             "m_OutputSlot": {
                 "m_Node": {
-                    "m_Id": "135db5fbc0bc4776a90d068d615d7611"
-                },
-                "m_SlotId": 0
-            },
-            "m_InputSlot": {
-                "m_Node": {
-                    "m_Id": "b5857a3a624848e0a3a844f14870ab2a"
-                },
-                "m_SlotId": 4
-            }
-        },
-        {
-            "m_OutputSlot": {
-                "m_Node": {
                     "m_Id": "17bbc7d6f11449118a4cea04670d78b7"
                 },
                 "m_SlotId": 0
@@ -1847,9 +1833,6 @@
             "m_Id": "40c04d63c66243ffa18afad3ec966885"
         },
         {
-            "m_Id": "bf34eaf2ea354410ad38f3b87822b5ac"
-        },
-        {
             "m_Id": "afbfd47e25db4ccc9af9318745dc0e52"
         }
     ],
@@ -1975,27 +1958,6 @@
     "m_SlotType": 0,
     "m_Hidden": false,
     "m_ShaderOutputName": "In",
-    "m_StageCapability": 3,
-    "m_Value": {
-        "x": 0.0,
-        "y": 0.0
-    },
-    "m_DefaultValue": {
-        "x": 0.0,
-        "y": 0.0
-    },
-    "m_Labels": []
-}
-
-{
-    "m_SGVersion": 0,
-    "m_Type": "UnityEditor.ShaderGraph.Vector2MaterialSlot",
-    "m_ObjectId": "bf34eaf2ea354410ad38f3b87822b5ac",
-    "m_Id": 4,
-    "m_DisplayName": "ElevationRange",
-    "m_SlotType": 0,
-    "m_Hidden": false,
-    "m_ShaderOutputName": "ElevationRange",
     "m_StageCapability": 3,
     "m_Value": {
         "x": 0.0,

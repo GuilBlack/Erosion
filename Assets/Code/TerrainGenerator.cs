@@ -155,7 +155,6 @@ public class TerrainGenerator : MonoBehaviour
         }
 
         #region SetConstants
-        _erosionCompute.SetVector("CellSize", _erosionParams.CellSize);
         _erosionCompute.SetInt("MapSize", _mapSize);
         _erosionCompute.SetFloat("DeltaTime", 0.016f * _erosionParams.TimeScale);
         _erosionCompute.SetFloat("HeightScale", _erosionParams.HeightScale);
