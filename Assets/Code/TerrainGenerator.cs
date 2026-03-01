@@ -1,3 +1,4 @@
+using Assets;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -6,22 +7,8 @@ using System.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
 
-[RequireComponent(typeof(Terrain))]
 public class TerrainGenerator : MonoBehaviour
 {
-    [Serializable]
-    public struct FBMParams
-    {
-        public int Octaves;
-        public float Persistence;
-        public float Lacunarity;
-        public float Exponentiation;
-        public float Amplitude;
-        public float Frequency;
-        public float Seed;
-        public float Scale;
-    };
-
     [Serializable]
     public class ErosionParams
     {
@@ -68,91 +55,19 @@ public class TerrainGenerator : MonoBehaviour
         }
     };
 
-    [SerializeField] private TerrainData _terrainData;
-    [SerializeField] private ComputeShader _heightmapCompute;
-    [SerializeField] private ComputeShader _erosionCompute;
-    [SerializeField] private int _mapSize = 1024;
-    [SerializeField] private Texture2D _heightmapTexture;
-    [SerializeField] private FBMParams _fbmParams;
-    [SerializeField] private bool _isRigedFBM = false;
-    [SerializeField] private bool _isCombinedFBM = false;
-    [SerializeField] private int _floatToIntScalar = 1000000000;
-    private int[] _globalMinMaxInt = new int[2] { 0, int.MaxValue };
-    [SerializeField] private CellData[] _cellData;
-    [SerializeField] private ErosionParams _erosionParams;
-    private float[,] _heightmap2D;
+    [SerializeField] private TerrainData        _terrainData;
+    [SerializeField] private ComputeShader      _heightmapCompute;
+    [SerializeField] private ComputeShader      _erosionCompute;
+    [SerializeField] private int                _mapSize = 1024;
+    [SerializeField] private Texture2D          _heightmapTexture;
+    [SerializeField] private FBMParamsSO        _fbmParams;
+    private float[]                             _globalMinMax = new float[2] { 0, 0 };
+    [SerializeField] private CellData[]         _cellData;
+    [SerializeField] private ErosionParamsSO    _erosionParams;
+    private float[,]                            _heightmap2D;
 
     public void ComputeHeightmap()
     {
-        if (_heightmapCompute == null)
-            return;
-
-        RenderTexture heightmap = new RenderTexture(_mapSize, _mapSize, 24, RenderTextureFormat.RFloat);
-        heightmap.enableRandomWrite = true;
-        heightmap.Create();
-
-        int kernelHandle = GetKernelHandle();
-
-        ComputeBuffer cbFBMParams = new ComputeBuffer(1, Marshal.SizeOf(_fbmParams));
-        cbFBMParams.SetData(new FBMParams[] { _fbmParams });
-        _heightmapCompute.SetBuffer(kernelHandle, "FBMParams", cbFBMParams);
-
-        ComputeBuffer cbMinMaxInt = new ComputeBuffer(2, sizeof(int));
-        cbMinMaxInt.SetData(new int[] { int.MaxValue, int.MinValue });
-        _heightmapCompute.SetBuffer(kernelHandle, "GlobalMinMaxInt", cbMinMaxInt);
-
-        // I'm doing this with a texture for visualization purposes, but it's not necessary nor efficient
-        _heightmapCompute.SetTexture(kernelHandle, "Result", heightmap);
-        SetGlobalData(_heightmapCompute);
-        
-        _heightmapCompute.Dispatch(kernelHandle, _mapSize / 16, _mapSize / 16, 1);
-
-        cbMinMaxInt.GetData(_globalMinMaxInt);
-        
-        kernelHandle = _heightmapCompute.FindKernel("RemapMain");
-
-        _heightmapCompute.SetBuffer(kernelHandle, "FBMParams", cbFBMParams);
-        _heightmapCompute.SetTexture(kernelHandle, "Result", heightmap);
-        _heightmapCompute.SetBuffer(kernelHandle, "GlobalMinMaxInt", cbMinMaxInt);
-
-        ComputeBuffer cbMinMaxFloat = new ComputeBuffer(2, sizeof(float));
-        cbMinMaxFloat.SetData(new float[] { _globalMinMaxInt[0] / (float)_floatToIntScalar, _globalMinMaxInt[1] / (float)_floatToIntScalar });
-        _heightmapCompute.SetBuffer(kernelHandle, "GlobalMinMaxFloat", cbMinMaxFloat);
-
-        _heightmapCompute.Dispatch(kernelHandle, _mapSize / 16, _mapSize / 16, 1);
-
-        cbMinMaxFloat.Release();
-        cbMinMaxInt.Release();
-        cbFBMParams.Release();
-
-        _heightmapTexture = GetHeightmapTexture(heightmap);
-    }
-
-    void SetGlobalData(ComputeShader cs)
-    {
-        cs.SetFloat("MapSize", _mapSize);
-        cs.SetInt("FloatToIntScalar", _floatToIntScalar);
-        cs.SetBool("IsRigedFBM", _isRigedFBM);
-        cs.SetBool("IsCombinedFBM", _isCombinedFBM);
-    }
-
-    private int GetKernelHandle()
-    {
-        if (_isCombinedFBM)
-            return _heightmapCompute.FindKernel("CombinedFBMMain");
-        
-        if (_isRigedFBM)
-            return _heightmapCompute.FindKernel("RigedFBMMain");
-        return _heightmapCompute.FindKernel("FBMMain");
-    }
-
-    private Texture2D GetHeightmapTexture(RenderTexture heightmap)
-    {
-        Texture2D heightmapTexture = new Texture2D(_mapSize, _mapSize, TextureFormat.RFloat, false);
-        RenderTexture.active = heightmap;
-        heightmapTexture.ReadPixels(new Rect(0, 0, heightmap.width, heightmap.height), 0, 0);
-        heightmapTexture.Apply();
-        return heightmapTexture;
     }
 
     public void SetTerrainHeightmap()

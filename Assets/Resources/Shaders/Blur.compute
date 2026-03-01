@@ -1,0 +1,40 @@
+﻿#pragma kernel BlurMain
+
+Texture2D<float2> SrcTexture;
+RWTexture2D<float2> Result;
+int2 TextureSize;
+
+groupshared float ldr[64];
+groupshared float ldrh[4][8];
+
+[numthreads(8,8,1)]
+void BlurMain(uint3 groupId : SV_GroupID
+    , uint3 groupThreadId : SV_GroupThreadID
+    , uint3 id : SV_DispatchThreadID)
+{
+    uint ldsIdx = groupThreadId.x + groupThreadId.y * 8;
+    int2 texturePixel = (int2)groupId.xy * 4 + ((int2)groupThreadId.xy - int2(2, 2));
+    texturePixel = clamp(texturePixel, int2(0,0), int2(TextureSize) - int2(1,1));
+
+    ldr[ldsIdx] = SrcTexture.Load(uint3(texturePixel, 0)).x;
+    GroupMemoryBarrierWithGroupSync();
+
+    // h blur
+    if (groupThreadId.x > 1 && groupThreadId.x < 6)
+    {
+        float height = 0.0;
+        for (uint i = groupThreadId.x - 2; i <= groupThreadId.x + 2; i++)
+            height += ldr[i + groupThreadId.y * 8];
+        ldrh[groupThreadId.x - 2][groupThreadId.y] = height / 5.0;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // v blur
+    if (groupThreadId.x > 1 && groupThreadId.x < 6 && groupThreadId.y > 1 && groupThreadId.y < 6)
+    {
+        float height = 0.0;
+        for (uint i = groupThreadId.y - 2; i <= groupThreadId.y + 2; i++)
+            height += ldrh[groupThreadId.x - 2][i];
+        Result[texturePixel] = float2(height / 5.0, 0.0);
+    }
+}

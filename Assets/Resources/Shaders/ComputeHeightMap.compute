@@ -20,10 +20,9 @@ struct FBMParameters
 // with cs.SetTexture
 RWTexture2D<float> Result;
 StructuredBuffer<FBMParameters> FBMParams;
-RWStructuredBuffer<int> GlobalMinMaxInt;
-RWStructuredBuffer<float> GlobalMinMaxFloat;
+RWStructuredBuffer<int> GlobalMinMax;
 float MapSize;
-int FloatToIntScalar;
+int FloatToIntScalar; // because we are still using cs_5_0...
 bool IsRigedFBM;
 bool IsCombinedFBM;
 
@@ -131,12 +130,12 @@ void GetMinMax(uint3 id)
     // Update global min/max for the first thread in the group
     if (id.x % 8 == 0 && id.y % 8 == 0)
     {
-        InterlockedMin(GlobalMinMaxInt[0], LocalMin);
-        InterlockedMax(GlobalMinMaxInt[1], LocalMax);
+        InterlockedMin(GlobalMinMax[0], LocalMin);
+        InterlockedMax(GlobalMinMax[1], LocalMax);
     }
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(8, 8, 1)]
 void FBMMain (uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
@@ -144,7 +143,7 @@ void FBMMain (uint3 id : SV_DispatchThreadID)
     GetMinMax(id);
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(8, 8, 1)]
 void RigedFBMMain(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
@@ -152,7 +151,7 @@ void RigedFBMMain(uint3 id : SV_DispatchThreadID)
     GetMinMax(id);
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(8, 8, 1)]
 void CombinedFBMMain(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
@@ -172,10 +171,11 @@ float remap(float v, float inMin, float inMax, float outMin, float outMax)
     return lerp(outMin, outMax, t);
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(8, 8, 1)]
 void RemapMain(uint3 id : SV_DispatchThreadID)
 {
     float value = Result[id.xy];
-    float normalizedValue = remap(value, GlobalMinMaxFloat[0], GlobalMinMaxFloat[1], 0.0, 1.0);
+    float2 globalMinMaxf = float2((float)GlobalMinMax[0], (float)GlobalMinMax[1]) / FloatToIntScalar;
+    float normalizedValue = remap(value, globalMinMaxf[0], globalMinMaxf[1], 0.0, 1.0);
     Result[id.xy] = normalizedValue;
 }
