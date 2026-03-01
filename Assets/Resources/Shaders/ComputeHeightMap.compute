@@ -20,7 +20,7 @@ struct FBMParameters
 
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float> Result;
+RWTexture2D<float2> Result;
 StructuredBuffer<FBMParameters> FBMParams;
 RWStructuredBuffer<int> GlobalMinMax;
 float MapSize;
@@ -74,7 +74,7 @@ float RigedFBM(float3 p, int octaves, float persistence, float lacunarity, float
 
 void GetMinMax(uint3 id)
 {
-    int value = int(Result[id.xy] * FloatToIntScalar);
+    int value = int(Result[id.xy].x * FloatToIntScalar);
 
     // Initialization for the first thread in the group
     if (id.x % 8 == 0 && id.y % 8 == 0)
@@ -101,7 +101,7 @@ void GetMinMax(uint3 id)
 void FBMMain (uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
-    Result[id.xy] = FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation);
+    Result[id.xy] = float2(FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation), 0.0);
     GetMinMax(id);
 }
 
@@ -109,7 +109,7 @@ void FBMMain (uint3 id : SV_DispatchThreadID)
 void RigedFBMMain(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
-    Result[id.xy] = RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation);
+    Result[id.xy] = float2(RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation), 0.0);
     GetMinMax(id);
 }
 
@@ -117,8 +117,8 @@ void RigedFBMMain(uint3 id : SV_DispatchThreadID)
 void CombinedFBMMain(uint3 id : SV_DispatchThreadID)
 {
     float3 pos = (id / MapSize) * FBMParams[0].Scale;
-    Result[id.xy] = (FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation) +
-        RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation)) / 2.0;
+    Result[id.xy] = float2((FBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation) +
+        RigedFBM(pos, FBMParams[0].Octaves, FBMParams[0].Persistence, FBMParams[0].Lacunarity, FBMParams[0].Exponentiation)) / 2.0, 0.0);
     GetMinMax(id);
 }
 
@@ -136,8 +136,8 @@ float remap(float v, float inMin, float inMax, float outMin, float outMax)
 [numthreads(8, 8, 1)]
 void RemapMain(uint3 id : SV_DispatchThreadID)
 {
-    float value = Result[id.xy];
+    float value = Result[id.xy].x;
     float2 globalMinMaxf = float2((float)GlobalMinMax[0], (float)GlobalMinMax[1]) / FloatToIntScalar;
     float normalizedValue = remap(value, globalMinMaxf[0], globalMinMaxf[1], 0.0, 1.0);
-    Result[id.xy] = normalizedValue * HeightScale;
+    Result[id.xy] = float2(normalizedValue * HeightScale, 0.0);
 }

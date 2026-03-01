@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Unity.Mathematics;
 using UnityEngine;
 
+[Obsolete("This class is deprecated. Please use ErosionSimulation.cs instead.")]
 public class TerrainGenerator : MonoBehaviour
 {
     [Serializable]
@@ -157,7 +158,6 @@ public class TerrainGenerator : MonoBehaviour
         #region SetConstants
         _erosionCompute.SetInt("MapSize", _mapSize);
         _erosionCompute.SetFloat("DeltaTime", 0.016f * _erosionParams.TimeScale);
-        _erosionCompute.SetFloat("HeightScale", _erosionParams.HeightScale);
         _erosionCompute.SetFloat("Gravity", _erosionParams.TimeScale);
         _erosionCompute.SetFloat("RainRate", _erosionParams.RainRate);
         _erosionCompute.SetFloat("EvaporationRate", _erosionParams.EvaporationRate);

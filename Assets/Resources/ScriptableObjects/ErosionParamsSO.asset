@@ -15,9 +15,8 @@ MonoBehaviour:
   TimeScale: 1
   TimeStep: 0.02
   Gravity: 9.81
-  RainRate: 0.012
-  HeightScale: 300
-  MapSize: 1024
+  RainRate: 0.02
+  MapSizeM: 1024
   EvaporationRate: 0.15
   SoilSuspensionRate: 1
   SedimentDepositionRate: 0.3

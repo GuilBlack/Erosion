@@ -15,11 +15,12 @@ public class ErosionSimulation : MonoBehaviour
     public ComputeShader    erosionComputeShader;
     public RenderTexture    heightMap;
     public ErosionParamsSO  simulationParams;
+    public bool             debugFlux;
 
-    int[]   _kernelHandles;
-    float   _simulationTime = 0f;
-    float   _simulationDelta = 0f;
-    bool    _isSimulating = false;
+    int[]           _kernelHandles;
+    bool            _isSimulating = false;
+    ComputeBuffer   _cellData;
+    RenderTexture   _debugFluxTexture;
 
     private void FixedUpdate()
     {
@@ -27,6 +28,18 @@ public class ErosionSimulation : MonoBehaviour
             return;
 
         SimulateErosion();
+    }
+
+    private void OnDestroy()
+    {
+        if (_cellData != null)
+            _cellData.Release();
+
+        if (_debugFluxTexture != null)
+        {
+            _debugFluxTexture.Release();
+            _debugFluxTexture = null;
+        }
     }
 
     public void StartSimulation()
@@ -40,13 +53,14 @@ public class ErosionSimulation : MonoBehaviour
             Debug.LogWarning("Terrain or Water material is not assigned. " +
                 "Simulation visualization may not work properly.");
 
-        _kernelHandles = new int[6];
+        _kernelHandles = new int[7];
         _kernelHandles[0] = erosionComputeShader.FindKernel("WaterIncrement");
         _kernelHandles[1] = erosionComputeShader.FindKernel("WaterOutFlow");
         _kernelHandles[2] = erosionComputeShader.FindKernel("WaterInFlow");
         _kernelHandles[3] = erosionComputeShader.FindKernel("ErosionDeposition");
         _kernelHandles[4] = erosionComputeShader.FindKernel("SedimentTransportation");
         _kernelHandles[5] = erosionComputeShader.FindKernel("Evaporation");
+        _kernelHandles[6] = erosionComputeShader.FindKernel("DebugFlux");
 
         // Check if all kernels are found
         for (int i = 0; i < _kernelHandles.Length; i++)
@@ -58,25 +72,40 @@ public class ErosionSimulation : MonoBehaviour
             }
         }
 
+        // create cell data buffer
+        _cellData = new ComputeBuffer(heightMap.width * heightMap.height, sizeof(float) * (4*2));
+        Debug.Log($"CellData buffer created with {heightMap.width * heightMap.height} elements.");
+
+        if (debugFlux)
+        {
+            _debugFluxTexture = new RenderTexture(heightMap.width, heightMap.height, 0, RenderTextureFormat.ARGBFloat);
+            _debugFluxTexture.enableRandomWrite = true;
+            _debugFluxTexture.Create();
+        }
+
         // set properties that don't change per kernel
         erosionComputeShader.SetFloat("MapSizeP", heightMap.width);
-        //erosionComputeShader.SetFloat("CellSizeM", simulationParams);
-        erosionComputeShader.SetFloat("HeightScale", simulationParams.HeightScale);
+        erosionComputeShader.SetFloat("CellSizeM", heightMap.width / simulationParams.MapSizeM);
 
         erosionComputeShader.SetFloat("TimeStep", simulationParams.TimeStep);
 
         erosionComputeShader.SetFloat("RainRate", simulationParams.RainRate);
         erosionComputeShader.SetFloat("EvaporationRate", simulationParams.EvaporationRate);
+        erosionComputeShader.SetFloat("Gravity", simulationParams.Gravity);
+        erosionComputeShader.SetFloat("PipeCrossSectionArea", simulationParams.PipeCrossArea);
+        erosionComputeShader.SetFloat("PipeLength", simulationParams.PipeLength);
 
         // Set buffer/texture references for all kernels
         for (int i = 0; i < _kernelHandles.Length; i++)
         {
             erosionComputeShader.SetTexture(_kernelHandles[i], "TerrainAndWaterHeights", heightMap);
+            erosionComputeShader.SetBuffer(_kernelHandles[i], "CellDataBuffer", _cellData);
         }
 
+        if (debugFlux)
+            erosionComputeShader.SetTexture(_kernelHandles[6], "DebugFluxTexture", _debugFluxTexture);
+
         _isSimulating = true;
-        _simulationTime = 0f;
-        _simulationDelta = 0f;
 
         _terrainMaterial.SetTexture("HeightMap", heightMap);
     }
@@ -84,6 +113,14 @@ public class ErosionSimulation : MonoBehaviour
     public void StopSimulation()
     {
         _isSimulating = false;
+        if (_cellData != null)
+            _cellData.Release();
+
+        if (_debugFluxTexture != null)
+        {
+            _debugFluxTexture.Release();
+            _debugFluxTexture = null;
+        }
     }
 
     private void SimulateErosion()
@@ -91,8 +128,18 @@ public class ErosionSimulation : MonoBehaviour
         int kernelHandle = erosionComputeShader.FindKernel("WaterIncrement");
         erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
 
+        kernelHandle = erosionComputeShader.FindKernel("WaterOutFlow");
+        erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+
+        kernelHandle = erosionComputeShader.FindKernel("WaterInFlow");
+        erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+
         kernelHandle = erosionComputeShader.FindKernel("Evaporation");
         erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+
+        kernelHandle = _kernelHandles[6];
+        if (debugFlux)
+            erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
     }
 }
 

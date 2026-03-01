@@ -4,16 +4,19 @@
 #pragma kernel ErosionDeposition
 #pragma kernel SedimentTransportation
 #pragma kernel Evaporation
+#pragma kernel DebugFlux
 
 // source paper: https://inria.hal.science/inria-00402079/document
 
 RWTexture2D<float2> TerrainAndWaterHeights;
+RWTexture2D<float4> DebugFluxTexture;
 
 struct CellData
 {
     float4  WaterOutFlux; // x = left, y = right, z = top, w = bottom
     float2  Velocity;
     float   Sediment;
+    float   Padding;
 };
 
 RWStructuredBuffer<CellData> CellDataBuffer;
@@ -24,13 +27,13 @@ float CellSizeM; // in meters
 float TimeStep;
 float CurrentTime;
 
+float RainRate;
+float EvaporationRate;
 float Gravity;
 float SedimentCapacityFactor;
 float MinSedimentCapacity;
 float DepositionRate;
 float ErosionRate;
-float EvaporationRate;
-float RainRate;
 float PipeCrossSectionArea;
 float PipeLength;
 
@@ -73,16 +76,53 @@ void WaterOutFlow(uint3 id : SV_DispatchThreadID)
 
     // equation (4)
     float fluxSum = currentWaterOutFlux.x + currentWaterOutFlux.y + currentWaterOutFlux.z + currentWaterOutFlux.w;
-    float k = max(1, TerrainAndWaterHeights[cellId].y * CellSizeM * CellSizeM / (fluxSum * TimeStep));
+    float k = min(1, TerrainAndWaterHeights[cellId].y * CellSizeM * CellSizeM / (fluxSum * TimeStep));
 
     // equation (5)
     GetCellData(cellId).WaterOutFlux = currentWaterOutFlux * k;
 }
 
+float4 GetWaterInFlux(in uint2 cellId)
+{
+    int2 neighboor = cellId + int2(-1, 0); // left first;
+    float inFluxL = (neighboor.x >= 0) ? GetCellData(neighboor).WaterOutFlux.y : 0; // right out flux of left neighboor
+    neighboor = cellId + int2(1, 0); // right
+    float inFluxR = (neighboor.x < MapSizeP) ? GetCellData(neighboor).WaterOutFlux.x : 0; // left out flux of right neighboor
+    neighboor = cellId + int2(0, 1); // top
+    float inFluxT = (neighboor.y < MapSizeP) ? GetCellData(neighboor).WaterOutFlux.w : 0; // bottom out flux of top neighboor
+    neighboor = cellId + int2(0, -1); // bottom
+    float inFluxB = (neighboor.y >= 0) ? GetCellData(neighboor).WaterOutFlux.z : 0; // top out flux of bottom neighboor
+    return float4(inFluxL, inFluxR, inFluxT, inFluxB);
+}
+
 [numthreads(8,8,1)]
 void WaterInFlow(uint3 id : SV_DispatchThreadID)
 {
+    uint2 cellId = id.xy;
+    float4 inFlux = GetWaterInFlux(cellId);
+    float sumInFlux = inFlux.x + inFlux.y + inFlux.z + inFlux.w;
 
+    float4 outFlux = GetCellData(cellId).WaterOutFlux;
+    float sumOutFlux = outFlux.x + outFlux.y + outFlux.z + outFlux.w;
+    // equation (6)
+    float deltaVolume = TimeStep * (sumInFlux - sumOutFlux);
+
+    // equation (7)
+    float lastWaterLevel = TerrainAndWaterHeights[cellId].y;
+    float currentWaterLevel = lastWaterLevel + (deltaVolume / CellSizeM * CellSizeM);
+    float avgWaterLevel = (currentWaterLevel + lastWaterLevel) * 0.5;
+    TerrainAndWaterHeights[cellId] = float2(TerrainAndWaterHeights[cellId].x, currentWaterLevel);
+
+    // get delta W
+    float2 deltaFlux;
+    deltaFlux.x = (inFlux.x - outFlux.x + outFlux.y - inFlux.y) * 0.5;
+    deltaFlux.y = (inFlux.w - outFlux.w + outFlux.z - inFlux.z) * 0.5;
+
+    // solve equation (8 & 9)
+    float2 velocity;
+    velocity.x = deltaFlux.x / (abs(avgWaterLevel) * CellSizeM);
+    velocity.y = deltaFlux.y / (abs(avgWaterLevel) * CellSizeM);
+    GetCellData(cellId).Velocity = velocity;
 }
 
 [numthreads(8,8,1)]
@@ -101,4 +141,10 @@ void SedimentTransportation (uint3 id : SV_DispatchThreadID)
 void Evaporation (uint3 id : SV_DispatchThreadID)
 {
     TerrainAndWaterHeights[id.xy] *= float2(1.0, 1.0 - EvaporationRate * TimeStep);
+}
+
+[numthreads(8,8,1)]
+void DebugFlux (uint3 id : SV_DispatchThreadID)
+{
+    DebugFluxTexture[id.xy] = GetCellData(id.xy).WaterOutFlux;
 }

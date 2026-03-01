@@ -11,8 +11,7 @@ namespace Assets
         public float TimeStep = 0.02f;
         public float Gravity = 9.81f;
         public float RainRate = 0.02f;
-        public float HeightScale = 500f;
-        public float MapSize = 1024f;
+        public float MapSizeM = 1024f;
 
         [Range(0, 1)]
         public float EvaporationRate = 0.015f;
