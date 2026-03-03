@@ -48,7 +48,7 @@ float FBM(float3 p, int octaves, float persistence, float lacunarity, float expo
     }
     
     total /= normalization;
-    total = total * 0.5 + 0.5;
+    total = saturate(total * 0.5 + 0.5);
     return pow(abs(total), exponentiation);
 }
 

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
+using Assets.MeshTools;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -21,8 +22,63 @@ public class TerrainHeightmapGenerator : MonoBehaviour
     [SerializeField] private FBMParamsSO    _heightmapGenerationParams;
     [SerializeField] private bool           _blurResult;
     [SerializeField] private float          _heightScale = 1f;
+    [SerializeField] private float          _meshSizeMeters = 1024f;
+    [SerializeField] private uint           _meshTessellation = 2048;
+
+    [Header("Mesh Objects")]
+    [SerializeField] private MeshFilter      _terrainMeshFilter;
+    [SerializeField] private MeshFilter      _waterMeshFilter;
 
     [ReadOnly] private RenderTexture _heightmapTemp;
+
+    public void GenerateMeshes()
+    {
+        if (_heightmapTexture == null)
+        {
+            Debug.LogError("Heightmap texture is not assigned.");
+            return;
+        }
+        if (_terrainMeshFilter == null || _waterMeshFilter == null)
+        {
+            Debug.LogError("Terrain or Water MeshFilter is not assigned.");
+            return;
+        }
+
+
+        string suggested = "TerrainPlane";
+
+        string path = EditorUtility.SaveFilePanelInProject(
+            "Save Generated Mesh",
+            suggested,
+            "asset",
+            "Choose where to save the generated mesh asset."
+        );
+
+        Mesh terrainMesh = PlaneMeshBuilder.BuildPlaneMesh(_meshSizeMeters, (int)_meshTessellation);
+        terrainMesh.name = System.IO.Path.GetFileNameWithoutExtension(path);
+
+        var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        if (existing != null)
+        {
+            existing.Clear();
+            EditorUtility.CopySerialized(terrainMesh, existing);
+            EditorUtility.SetDirty(existing);
+            DestroyImmediate(terrainMesh);
+        }
+        else
+        {
+            AssetDatabase.CreateAsset(terrainMesh, path);
+            EditorUtility.SetDirty(terrainMesh);
+        }
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+
+        _terrainMeshFilter.mesh = saved;
+        _waterMeshFilter.mesh = saved;
+    }
 
     public void ComputeHeightmap()
     {
@@ -133,6 +189,8 @@ class TerrainHeightmapGeneratorEditor : Editor
     {
         DrawDefaultInspector();
         TerrainHeightmapGenerator generator = (TerrainHeightmapGenerator)target;
+        if (GUILayout.Button("Generate Meshes"))
+            generator.GenerateMeshes();
         if (GUILayout.Button("Compute Heightmap"))
             generator.ComputeHeightmap();
     }

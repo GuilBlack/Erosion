@@ -30,6 +30,11 @@ float3 hash33(float3 p3)
     return frac((p3.xxy + p3.yxx)*p3.zyx);
 }
 
+float3 grad33(float3 p)
+{
+    float3 g = hash33(p) * 2.0 - 1.0;
+    return normalize(g + 1e-6);
+}
 
 // perlin noise from iq
 // The MIT License
@@ -53,13 +58,13 @@ float noise(in float3 p)
 	
     float3 u = f * f * (3.0 - 2.0 * f);
 
-    return lerp(lerp(lerp(dot(hash33(i + float3(0.0, 0.0, 0.0)), f - float3(0.0, 0.0, 0.0)),
-                        dot(hash33(i + float3(1.0, 0.0, 0.0)), f - float3(1.0, 0.0, 0.0)), u.x),
-                   lerp(dot(hash33(i + float3(0.0, 1.0, 0.0)), f - float3(0.0, 1.0, 0.0)),
-                        dot(hash33(i + float3(1.0, 1.0, 0.0)), f - float3(1.0, 1.0, 0.0)), u.x), u.y),
-              lerp(lerp(dot(hash33(i + float3(0.0, 0.0, 1.0)), f - float3(0.0, 0.0, 1.0)),
-                        dot(hash33(i + float3(1.0, 0.0, 1.0)), f - float3(1.0, 0.0, 1.0)), u.x),
-                   lerp(dot(hash33(i + float3(0.0, 1.0, 1.0)), f - float3(0.0, 1.0, 1.0)),
-                        dot(hash33(i + float3(1.0, 1.0, 1.0)), f - float3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+    return lerp(lerp(lerp(dot(grad33(i + float3(0.0, 0.0, 0.0)), f - float3(0.0, 0.0, 0.0)),
+                        dot(grad33(i + float3(1.0, 0.0, 0.0)), f - float3(1.0, 0.0, 0.0)), u.x),
+                   lerp(dot(grad33(i + float3(0.0, 1.0, 0.0)), f - float3(0.0, 1.0, 0.0)),
+                        dot(grad33(i + float3(1.0, 1.0, 0.0)), f - float3(1.0, 1.0, 0.0)), u.x), u.y),
+              lerp(lerp(dot(grad33(i + float3(0.0, 0.0, 1.0)), f - float3(0.0, 0.0, 1.0)),
+                        dot(grad33(i + float3(1.0, 0.0, 1.0)), f - float3(1.0, 0.0, 1.0)), u.x),
+                   lerp(dot(grad33(i + float3(0.0, 1.0, 1.0)), f - float3(0.0, 1.0, 1.0)),
+                        dot(grad33(i + float3(1.0, 1.0, 1.0)), f - float3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
 }
 // end of perlin noise
