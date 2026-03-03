@@ -1,7 +1,7 @@
-﻿#pragma kernel BlurMain
+#pragma kernel BlurMain
 
-Texture2D<float2> SrcTexture;
-RWTexture2D<float2> Result;
+Texture2D<float4> SrcTexture;
+RWTexture2D<float4> Result;
 int2 TextureSize;
 
 groupshared float ldr[64];
@@ -35,6 +35,6 @@ void BlurMain(uint3 groupId : SV_GroupID
         float height = 0.0;
         for (uint i = groupThreadId.y - 2; i <= groupThreadId.y + 2; i++)
             height += ldrh[groupThreadId.x - 2][i];
-        Result[texturePixel] = float2(height / 5.0, 0.0);
+        Result[texturePixel] = float4(height / 5.0, 0.0, 0.0, 0.0);
     }
 }

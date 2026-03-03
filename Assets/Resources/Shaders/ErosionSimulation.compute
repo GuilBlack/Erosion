@@ -5,17 +5,22 @@
 #pragma kernel SedimentTransportation
 #pragma kernel Evaporation
 #pragma kernel DebugFlux
+#pragma kernel DebugVelocity
+
+#pragma enable_d3d12_debug_symbols
 
 // source paper: https://inria.hal.science/inria-00402079/document
+// source paper: https://old.cescg.org/CESCG-2011/papers/TUBudapest-Jako-Balazs.pdf
 
-RWTexture2D<float2> TerrainAndWaterHeights;
+RWTexture2D<float4> TerrainState;
 RWTexture2D<float4> DebugFluxTexture;
+RWTexture2D<float2> DebugVelocityTexture;
 
 struct CellData
 {
     float4  WaterOutFlux; // x = left, y = right, z = top, w = bottom
     float2  Velocity;
-    float   Sediment;
+    float   Sediment1;
     float   Padding;
 };
 
@@ -30,26 +35,33 @@ float CurrentTime;
 float RainRate;
 float EvaporationRate;
 float Gravity;
-float SedimentCapacityFactor;
-float MinSedimentCapacity;
-float DepositionRate;
-float ErosionRate;
+
+float MinTiltAngle;
+float SedimentCapacityCoef;
+float SedimentDepositionRate;
+float SoilSuspensionRate;
+
 float PipeCrossSectionArea;
 float PipeLength;
 
 #define GetCellData(id2d) CellDataBuffer[(int)id2d.y * MapSizeP + id2d.x]
 #define SetCellData(id2d, data) CellDataBuffer[(int)id2d.y * MapSizeP + id2d.x] = data
 
+#define LEFT_OFFSET uint2(-1, 0)
+#define RIGHT_OFFSET uint2(1, 0)
+#define TOP_OFFSET uint2(0, 1)
+#define BOTTOM_OFFSET uint2(0, -1)
+
 [numthreads(8,8,1)]
 void WaterIncrement(uint3 id : SV_DispatchThreadID)
 {
-    TerrainAndWaterHeights[id.xy] += float2(0, RainRate * TimeStep);
+    TerrainState[id.xy] += float4(0, RainRate * TimeStep, 0, 0);
 }
 
 float GetCellHeight(uint2 cellId, uint2 cellOffset)
 {
     uint2 neighboorDir = clamp(cellId + cellOffset, uint2(0,0), uint2(MapSizeP - 1, MapSizeP - 1));
-    float2 cellHeights = TerrainAndWaterHeights[neighboorDir].xy;
+    float2 cellHeights = TerrainState[neighboorDir].xy;
     return cellHeights.x + cellHeights.y;
 }
 
@@ -62,21 +74,25 @@ void WaterOutFlow(uint3 id : SV_DispatchThreadID)
     // equation (3)
     float4 deltaHeight = float4(cellHeight,cellHeight,cellHeight,cellHeight) -
         float4(
-            GetCellHeight(cellId, uint2(-1, 0)),
-            GetCellHeight(cellId, uint2(1, 0)),
-            GetCellHeight(cellId, uint2(0, 1)),
-            GetCellHeight(cellId, uint2(0, -1))
+            GetCellHeight(cellId, LEFT_OFFSET),
+            GetCellHeight(cellId, RIGHT_OFFSET),
+            GetCellHeight(cellId, TOP_OFFSET),
+            GetCellHeight(cellId, BOTTOM_OFFSET)
         );
 
     float4 currentWaterOutFlux = GetCellData(cellId).WaterOutFlux;
 
     // equation (2)
+    // scalar is in m^2/s
+                   // s       // m^2                 // m/s^2  // m
     float scalar = TimeStep * PipeCrossSectionArea * Gravity / PipeLength; // just an intermediate scalar for better readability
-    currentWaterOutFlux = max(0, currentWaterOutFlux + scalar * deltaHeight);
+                                                                // m
+    currentWaterOutFlux = max(0, currentWaterOutFlux + scalar * deltaHeight); // out flux in m^3/s
 
     // equation (4)
     float fluxSum = currentWaterOutFlux.x + currentWaterOutFlux.y + currentWaterOutFlux.z + currentWaterOutFlux.w;
-    float k = min(1, TerrainAndWaterHeights[cellId].y * CellSizeM * CellSizeM / (fluxSum * TimeStep));
+    // k has no units because m^3 / ((m^3/s) *s) = 1
+    float k = fluxSum < 1e-3 ? 1 : min(1, TerrainState[cellId].y * CellSizeM * CellSizeM / (fluxSum * TimeStep));
 
     // equation (5)
     GetCellData(cellId).WaterOutFlux = currentWaterOutFlux * k;
@@ -105,13 +121,15 @@ void WaterInFlow(uint3 id : SV_DispatchThreadID)
     float4 outFlux = GetCellData(cellId).WaterOutFlux;
     float sumOutFlux = outFlux.x + outFlux.y + outFlux.z + outFlux.w;
     // equation (6)
-    float deltaVolume = TimeStep * (sumInFlux - sumOutFlux);
+    float deltaVolume = TimeStep * (sumInFlux - sumOutFlux); // in m^3
 
     // equation (7)
-    float lastWaterLevel = TerrainAndWaterHeights[cellId].y;
-    float currentWaterLevel = max(0.0, lastWaterLevel + (deltaVolume / (CellSizeM * CellSizeM)));
-    float avgWaterLevel = (currentWaterLevel + lastWaterLevel) * 0.5;
-    TerrainAndWaterHeights[cellId] = float2(TerrainAndWaterHeights[cellId].x, currentWaterLevel);
+    float4 lastState = TerrainState[cellId];
+    lastState.y = TerrainState[cellId].y;
+    float currentWaterLevel = max(0.0, lastState.y + (deltaVolume / (CellSizeM * CellSizeM))); // in m
+    float avgWaterLevel = (currentWaterLevel + lastState.y) * 0.5;
+    lastState.y = currentWaterLevel;
+    TerrainState[cellId] = lastState;
 
     // get delta W
     float2 deltaFlux;
@@ -119,38 +137,122 @@ void WaterInFlow(uint3 id : SV_DispatchThreadID)
     deltaFlux.y = (inFlux.w - outFlux.w + outFlux.z - inFlux.z) * 0.5;
 
     // solve equation (8 & 9)
-    //float2 velocity;
-    //velocity.x = deltaFlux.x / (avgWaterLevel * CellSizeM);
-    //velocity.y = deltaFlux.y / (avgWaterLevel * CellSizeM);
-    //GetCellData(cellId).Velocity = velocity;
+    float2 velocity;
+    velocity.x = avgWaterLevel < 1e-3 ? 0 : deltaFlux.x / (avgWaterLevel * CellSizeM); // (m^3/s) / m^2 = m/s
+    velocity.y = avgWaterLevel < 1e-3 ? 0 : deltaFlux.y / (avgWaterLevel * CellSizeM);
+    GetCellData(cellId).Velocity = velocity;
+}
 
-    // from this paper: https://old.cescg.org/CESCG-2011/papers/TUBudapest-Jako-Balazs.pdf
-    // solving the equation 8 & 9 doesn't seem necessary and we take deltaFlux 
-    // as the velocity directly. I guess now we don't have any worries about the case when 
-    // avgWaterLevel is close to 0 and cause the velocity to be extremely high.
-    GetCellData(cellId).Velocity = deltaFlux;
+float2 GetCellHeights(uint2 cellId, uint2 cellOffset)
+{
+    uint2 neighboorDir = clamp(cellId + cellOffset, uint2(0,0), uint2(MapSizeP - 1, MapSizeP - 1));
+    return TerrainState[neighboorDir].xy;
 }
 
 [numthreads(8,8,1)]
 void ErosionDeposition (uint3 id : SV_DispatchThreadID)
 {
+    float2 heightsL = GetCellHeights(id.xy, LEFT_OFFSET);
+    float2 heightsR = GetCellHeights(id.xy, RIGHT_OFFSET);
+    float2 heightsT = GetCellHeights(id.xy, TOP_OFFSET);
+    float2 heightsB = GetCellHeights(id.xy, BOTTOM_OFFSET);
 
+    // https://math.stackexchange.com/questions/1044044/local-tilt-angle-based-on-height-field
+    float2 dh;
+    dh.x = (heightsR.x - heightsL.x) / (2 * CellSizeM);
+    dh.y = (heightsT.x - heightsB.x) / (2 * CellSizeM);
+    float sinAlpha = sqrt(dh.x * dh.x + dh.y * dh.y) / sqrt(1 + dh.x * dh.x + dh.y * dh.y);
+
+    
+    // For debug to check if the tilt angle is calculated correctly.
+    //float4 lastState = TerrainState[id.xy];
+    //lastState.z = sinAlpha; // for debug, store the tilt angle in z channel.
+    //float3 dhdxVec = normalize(float3(2 * CellSizeM, heightsR.x - heightsL.x, 0));
+    //float3 dhdzVec = normalize(float3(0, heightsT.x - heightsB.x, 2 * CellSizeM));
+    //float3 n = normalize(cross(dhdxVec, dhdzVec));
+    //float theta = acos(dot(n, float3(0,1,0)));
+    //float tiltAngle = sin(theta);
+    //lastState.w = tiltAngle; // for debug, store the tilt angle in w channel.
+    //TerrainState[id.xy] = lastState;
+
+    // equation (10)
+    float transportCapacity = SedimentCapacityCoef * max(MinTiltAngle, sinAlpha) * length(GetCellData(id.xy).Velocity * TimeStep / CellSizeM);
+
+    // for debuging
+    // float4 lastState = TerrainState[id.xy];
+    // lastState.z = sinAlpha; // for debug, store the tilt angle in z channel.
+    // lastState.w = transportCapacity;
+
+    // we will use the equations from paper 2 (12a-c) and (13a-c)
+    float4 lastState = TerrainState[id.xy];
+    float st = lastState.z;
+    float sedimentTransported = transportCapacity > st ?
+        TimeStep * SoilSuspensionRate * (transportCapacity - st) :
+        TimeStep * SedimentDepositionRate * (st - transportCapacity);
+
+    DebugVelocityTexture[id.xy] = float2(
+        TimeStep * SoilSuspensionRate * (transportCapacity - st),
+        transportCapacity
+    );
+
+    lastState += transportCapacity > st ?
+        float4(-sedimentTransported, sedimentTransported, 0, 0) :
+        float4(sedimentTransported, -sedimentTransported, 0, 0);
+
+    GetCellData(id.xy).Sediment1 = transportCapacity > st ?
+        st + sedimentTransported : st - sedimentTransported;
+
+    TerrainState[id.xy] = lastState;
+}
+
+float Sediment1BilinearSampling(float2 p)
+{
+    p = clamp(p, 0.0, (float)MapSizeP - 1.0);
+    int2 p0 = (int2)floor(p);
+    float2 f = frac(p);
+    int2 p1 = min(p0 + int2(1, 1), int2(MapSizeP - 1, MapSizeP - 1));
+
+    uint2 id00 = (uint2)p0;
+    uint2 id10 = uint2(p1.x, p0.y);
+    uint2 id01 = uint2(p0.x, p1.y);
+    uint2 id11 = (uint2)p1;
+
+    float s00 = GetCellData(id00).Sediment1;
+    float s10 = GetCellData(id10).Sediment1;
+    float s01 = GetCellData(id01).Sediment1;
+    float s11 = GetCellData(id11).Sediment1;
+
+    float sx0 = lerp(s00, s10, f.x);
+    float sx1 = lerp(s01, s11, f.x);
+    return lerp(sx0, sx1, f.y);
 }
 
 [numthreads(8,8,1)]
 void SedimentTransportation (uint3 id : SV_DispatchThreadID)
 {
-
+    // in cells because     // (m/s)                    * s        / m = 1
+    float2 velocity = clamp(GetCellData(id.xy).Velocity * TimeStep / CellSizeM, -1.0, 1.0);
+    float2 lastPos = float2(id.xy) - velocity;
+    float sediment = Sediment1BilinearSampling(lastPos);
+    float4 lastState = TerrainState[id.xy];
+    lastState.z = sediment;
+    TerrainState[id.xy] = lastState;
 }
 
 [numthreads(8,8,1)]
 void Evaporation (uint3 id : SV_DispatchThreadID)
 {
-    TerrainAndWaterHeights[id.xy] *= float2(1.0, 1.0 - EvaporationRate * TimeStep);
+    TerrainState[id.xy] *= float4(1.0, 1.0 - EvaporationRate * TimeStep, 1.0, 1.0);
 }
 
 [numthreads(8,8,1)]
 void DebugFlux (uint3 id : SV_DispatchThreadID)
 {
     DebugFluxTexture[id.xy] = GetCellData(id.xy).WaterOutFlux;
+}
+
+[numthreads(8,8,1)]
+void DebugVelocity (uint3 id : SV_DispatchThreadID)
+{
+    DebugVelocityTexture[id.xy] = GetCellData(id.xy).Velocity * TimeStep / CellSizeM; // in cells
 }

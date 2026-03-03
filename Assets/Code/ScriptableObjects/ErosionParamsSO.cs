@@ -18,10 +18,16 @@ namespace Assets
 
         [Range(0, 0.05f)]
         public float EvaporationRate = 0.015f;
+        [Range(0.1f, 2.0f)]
         public float SoilSuspensionRate = 0.01f;
+        [Range(0.1f, 3.0f)]
         public float SedimentDepositionRate = 0.3f;
+        [Range(0.1f, 10f)]
         public float SedimentSofteningRate = 3f;
+        [Range(0.1f, 3f)]
         public float SedimentCapacity = 0.1f;
+        [Range(0, 0.1f)]
+        public float MinTiltAngle = 0.05f;
         public float MaxErosionDepth = 1f;
         public float MinHardness = 0.1f;
 

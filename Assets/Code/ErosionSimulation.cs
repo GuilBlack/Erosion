@@ -1,5 +1,7 @@
 using UnityEngine;
 using Assets;
+using Unity.VisualScripting;
+
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -16,6 +18,7 @@ public class ErosionSimulation : MonoBehaviour
     public RenderTexture    heightMap;
     public ErosionParamsSO  simulationParams;
     public bool             debugFlux;
+    public bool             debugVelocity;
 
     int[]           _kernelHandles;
     bool            _isSimulating = false;
@@ -53,7 +56,7 @@ public class ErosionSimulation : MonoBehaviour
             Debug.LogWarning("Terrain or Water material is not assigned. " +
                 "Simulation visualization may not work properly.");
 
-        _kernelHandles = new int[7];
+        _kernelHandles = new int[8];
         _kernelHandles[0] = erosionComputeShader.FindKernel("WaterIncrement");
         _kernelHandles[1] = erosionComputeShader.FindKernel("WaterOutFlow");
         _kernelHandles[2] = erosionComputeShader.FindKernel("WaterInFlow");
@@ -61,6 +64,7 @@ public class ErosionSimulation : MonoBehaviour
         _kernelHandles[4] = erosionComputeShader.FindKernel("SedimentTransportation");
         _kernelHandles[5] = erosionComputeShader.FindKernel("Evaporation");
         _kernelHandles[6] = erosionComputeShader.FindKernel("DebugFlux");
+        _kernelHandles[7] = erosionComputeShader.FindKernel("DebugVelocity");
 
         // Check if all kernels are found
         for (int i = 0; i < _kernelHandles.Length; i++)
@@ -83,18 +87,27 @@ public class ErosionSimulation : MonoBehaviour
             _debugFluxTexture.Create();
         }
 
+        if (debugVelocity)
+        {
+            _debugFluxTexture = new RenderTexture(heightMap.width, heightMap.height, 0, RenderTextureFormat.RGFloat);
+            _debugFluxTexture.enableRandomWrite = true;
+            _debugFluxTexture.Create();
+        }
+
         // set properties that don't change per kernel
         ApplySimulationParameters();
 
         // Set buffer/texture references for all kernels
         for (int i = 0; i < _kernelHandles.Length; i++)
         {
-            erosionComputeShader.SetTexture(_kernelHandles[i], "TerrainAndWaterHeights", heightMap);
+            erosionComputeShader.SetTexture(_kernelHandles[i], "TerrainState", heightMap);
             erosionComputeShader.SetBuffer(_kernelHandles[i], "CellDataBuffer", _cellData);
-        }
 
-        if (debugFlux)
-            erosionComputeShader.SetTexture(_kernelHandles[6], "DebugFluxTexture", _debugFluxTexture);
+            if (debugFlux)
+                erosionComputeShader.SetTexture(_kernelHandles[i], "DebugFluxTexture", _debugFluxTexture);
+            if (debugVelocity)
+                erosionComputeShader.SetTexture(_kernelHandles[i], "DebugVelocityTexture", _debugFluxTexture);
+        }
 
         _isSimulating = true;
 
@@ -124,8 +137,27 @@ public class ErosionSimulation : MonoBehaviour
         erosionComputeShader.SetFloat("RainRate", simulationParams.RainRate);
         erosionComputeShader.SetFloat("EvaporationRate", simulationParams.EvaporationRate);
         erosionComputeShader.SetFloat("Gravity", simulationParams.Gravity);
+
+        erosionComputeShader.SetFloat("MinTiltAngle", simulationParams.MinTiltAngle);
+        erosionComputeShader.SetFloat("SedimentCapacityCoef", simulationParams.SedimentCapacity);
+        erosionComputeShader.SetFloat("SedimentDepositionRate", simulationParams.SedimentDepositionRate);
+        erosionComputeShader.SetFloat("SoilSuspensionRate", simulationParams.SoilSuspensionRate);
+
         erosionComputeShader.SetFloat("PipeCrossSectionArea", simulationParams.PipeCrossArea);
         erosionComputeShader.SetFloat("PipeLength", simulationParams.PipeLength);
+        
+        // Check if the values are being set correctly
+        Debug.Log($"Applied Simulation Parameters: " +
+            $"TimeStep={simulationParams.TimeStep}, " +
+            $"RainRate={simulationParams.RainRate}, " +
+            $"EvaporationRate={simulationParams.EvaporationRate}, " +
+            $"Gravity={simulationParams.Gravity}, " +
+            $"MinTiltAngle={simulationParams.MinTiltAngle}, " +
+            $"SedimentCapacityCoef={simulationParams.SedimentCapacity}, " +
+            $"SedimentDepositionRate={simulationParams.SedimentDepositionRate}, " +
+            $"SoilSuspensionRate={simulationParams.SoilSuspensionRate}, " +
+            $"PipeCrossSectionArea={simulationParams.PipeCrossArea}, " +
+            $"PipeLength={simulationParams.PipeLength}");
     }
 
     private void SimulateErosion()
@@ -139,12 +171,20 @@ public class ErosionSimulation : MonoBehaviour
         kernelHandle = erosionComputeShader.FindKernel("WaterInFlow");
         erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
 
+        kernelHandle = erosionComputeShader.FindKernel("ErosionDeposition");
+        erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+
+        kernelHandle = erosionComputeShader.FindKernel("SedimentTransportation");
+        erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+
         kernelHandle = erosionComputeShader.FindKernel("Evaporation");
         erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
 
         kernelHandle = _kernelHandles[6];
-        if (debugFlux)
-            erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+        //if (debugFlux)
+        //    erosionComputeShader.Dispatch(kernelHandle, heightMap.width / 8, heightMap.height / 8, 1);
+        //if (debugVelocity)
+        //    erosionComputeShader.Dispatch(_kernelHandles[7], heightMap.width / 8, heightMap.height / 8, 1);
     }
 }
 
