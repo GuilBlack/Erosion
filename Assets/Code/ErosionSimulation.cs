@@ -142,6 +142,7 @@ public class ErosionSimulation : MonoBehaviour
         erosionComputeShader.SetFloat("SedimentCapacityCoef", simulationParams.SedimentCapacity);
         erosionComputeShader.SetFloat("SedimentDepositionRate", simulationParams.SedimentDepositionRate);
         erosionComputeShader.SetFloat("SoilSuspensionRate", simulationParams.SoilSuspensionRate);
+        erosionComputeShader.SetFloat("MaxErosionDepth", simulationParams.MaxErosionDepth);
 
         erosionComputeShader.SetFloat("PipeCrossSectionArea", simulationParams.PipeCrossArea);
         erosionComputeShader.SetFloat("PipeLength", simulationParams.PipeLength);

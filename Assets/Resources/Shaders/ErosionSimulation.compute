@@ -40,6 +40,7 @@ float MinTiltAngle;
 float SedimentCapacityCoef;
 float SedimentDepositionRate;
 float SoilSuspensionRate;
+float MaxErosionDepth;
 
 float PipeCrossSectionArea;
 float PipeLength;
@@ -169,14 +170,17 @@ void ErosionDeposition (uint3 id : SV_DispatchThreadID)
     //lastState.z = sinAlpha; // for debug, store the tilt angle in z channel.
     //float3 dhdxVec = normalize(float3(2 * CellSizeM, heightsR.x - heightsL.x, 0));
     //float3 dhdzVec = normalize(float3(0, heightsT.x - heightsB.x, 2 * CellSizeM));
-    //float3 n = normalize(cross(dhdxVec, dhdzVec));
+    //float3 n = normalize(float3(-dh.x, 1.0, -dh.y)); // essentially the result of the cross product of dhdxVec and dhdzVec.
     //float theta = acos(dot(n, float3(0,1,0)));
     //float tiltAngle = sin(theta);
     //lastState.w = tiltAngle; // for debug, store the tilt angle in w channel.
     //TerrainState[id.xy] = lastState;
 
-    // equation (10)
-    float transportCapacity = SedimentCapacityCoef * max(MinTiltAngle, sinAlpha) * length(GetCellData(id.xy).Velocity * TimeStep / CellSizeM);
+    float d1 = TerrainState[id.xy].y;
+	float lmax = saturate(1.0 - max(0.0, MaxErosionDepth - d1) / MaxErosionDepth);
+
+    // equation (10) second paper
+    float transportCapacity = SedimentCapacityCoef * lmax * max(MinTiltAngle, sinAlpha) * length(GetCellData(id.xy).Velocity);
 
     // for debuging
     // float4 lastState = TerrainState[id.xy];
@@ -190,11 +194,6 @@ void ErosionDeposition (uint3 id : SV_DispatchThreadID)
         TimeStep * SoilSuspensionRate * (transportCapacity - st) :
         TimeStep * SedimentDepositionRate * (st - transportCapacity);
 
-    DebugVelocityTexture[id.xy] = float2(
-        TimeStep * SoilSuspensionRate * (transportCapacity - st),
-        transportCapacity
-    );
-
     lastState += transportCapacity > st ?
         float4(-sedimentTransported, sedimentTransported, 0, 0) :
         float4(sedimentTransported, -sedimentTransported, 0, 0);
@@ -202,6 +201,7 @@ void ErosionDeposition (uint3 id : SV_DispatchThreadID)
     GetCellData(id.xy).Sediment1 = transportCapacity > st ?
         st + sedimentTransported : st - sedimentTransported;
 
+    lastState.w = sinAlpha;
     TerrainState[id.xy] = lastState;
 }
 

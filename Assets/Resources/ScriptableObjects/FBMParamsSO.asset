@@ -12,13 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 859fdef7e41d54f40ad829d7bba09e3f, type: 3}
   m_Name: FBMParamsSO
   m_EditorClassIdentifier: Assembly-CSharp::Assets.FBMParamsSO
-  Octaves: 8
+  Octaves: 4
   Persistence: 0.5
   Lacunarity: 2
   Exponentiation: 4
   Amplitude: 0.5
   Frequency: 1
   Seed: 4.47
-  Scale: 1
-  IsRidgedFBM: 1
+  Scale: 2
+  IsRidgedFBM: 0
   IsCombinedFBM: 0
