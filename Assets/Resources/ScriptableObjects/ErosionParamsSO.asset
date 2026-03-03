@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: ErosionParamsSO
   m_EditorClassIdentifier: Assembly-CSharp::Assets.ErosionParamsSO
   TimeScale: 1
-  TimeStep: 0.03
+  TimeStep: 0.02
   Gravity: 9.81
-  RainRate: 0.033
+  RainRate: 0
   MapSizeM: 1024
-  EvaporationRate: 0.05
+  EvaporationRate: 0
   SoilSuspensionRate: 0.5
   SedimentDepositionRate: 1
   SedimentSofteningRate: 5

@@ -5,16 +5,19 @@ This is a prototype Unity implementation of a grid-based hydraulic erosion simul
 ## Features
 
 - Create initial terrain with Fractal Browian Motion on a compute shader.
-- Simulate hydraulic erosion on a compute shader separated in multiple kernels following the paper by Jako and Szirmay-Kalos.
-- Runs in the editor as a tool to create terrain.
+- Simulate hydraulic erosion on a compute shader separated in multiple kernels following mainly the second paper mentionned.
+- Runs in real time.
 
 ## To Do
-- Make sure that the simulation is correct.
-- Make the simulation run in real-time.
+- Correct some instabilities in the simulation.
 - Add thermal erosion.
 
 ## Images
 
-| Initial Terrain 	                          | After The Simulation 	                  |
-|-----------------                            |----------------------	                  |
-|![Initial Terrain](./ImagePreview/Before.png)|![Eroded Terrain](./ImagePreview/After.png)|
+| Initial Terrain 	                          | During The Simulation 	                    | After The Simulation                        |
+|-----------------                            |----------------------	                    |-----------------------	                  |
+|![Initial Terrain](./ImagePreview/Before.png)|![Eroded Terrain](./ImagePreview/During.png) |![Eroded Terrain](./ImagePreview/After.png)  |
+
+# Demo
+
+The demo scene is available in the `Assets/Scenes/ErosionV2.unity` file. The other scene is pretty much deprecated.
